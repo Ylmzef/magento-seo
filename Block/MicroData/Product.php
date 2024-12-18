@@ -21,6 +21,8 @@ use Magento\Review\Model\Review\SummaryFactory;
 use Magento\Store\Model\StoreManagerInterface;
 use Web200\Seo\Provider\MicrodataConfig;
 use Magento\Review\Model\ResourceModel\Review\CollectionFactory as ReviewCollectionFactory;
+use Efex\Reviews\Helper\Data as ReviewsHelper;
+
 
 
 /**
@@ -95,6 +97,7 @@ class Product extends Template
      * @param SummaryFactory          $reviewSummaryFactory
      * @param ReviewCollectionFactory $reviewCollectionFactory
      * @param Context                 $context
+     * @param ReviewsHelper           $reviewsHelper
      * @param mixed[]                 $data
      */
     public function __construct(
@@ -106,6 +109,7 @@ class Product extends Template
         ReviewRendererInterface $reviewRenderer,
         SummaryFactory $reviewSummaryFactory,
         ReviewCollectionFactory $reviewCollectionFactory,
+        ReviewsHelper $reviewsHelper, // Inject ReviewsHelper here
         Context $context,
         array $data = []
     ) {
@@ -119,6 +123,8 @@ class Product extends Template
         $this->reviewSummaryFactory = $reviewSummaryFactory;
         $this->config = $config;
         $this->reviewCollectionFactory = $reviewCollectionFactory;
+        $this->reviewsHelper = $reviewsHelper; // Assign to a class property
+
 
     }
 
@@ -164,12 +170,27 @@ class Product extends Template
                 'priceCurrency' => $this->storeManager->getStore()->getCurrentCurrencyCode(),
                 'url' => $product->getProductUrl(),
                 'price' => round($product->getFinalPrice(), 2),
-                'priceValidUntil' => $available->format('Y-m-d')
+                'priceValidUntil' => $available->format('Y-m-d'),
+                'availability' => $product->isAvailable() ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
             ];
-            if ($product->isAvailable()) {
-                $offer['availability'] = 'https://schema.org/InStock';
-            } else {
-                $offer['availability'] = 'https://schema.org/OutOfStock';
+
+            $offers = [$offer];
+
+            // Check if the product is configurable
+            if ($product->getTypeId() === 'configurable') {
+                $childProducts = $product->getTypeInstance()->getUsedProducts($product);
+                $prices = [];
+                foreach ($childProducts as $childProduct) {
+                    $prices[] = $childProduct->getFinalPrice();
+                }
+                $aggregateOffer = [
+                    '@type' => 'AggregateOffer',
+                    'offerCount' => count($childProducts),
+                    'lowPrice' => min($prices),
+                    'highPrice' => max($prices),
+                    'priceCurrency' => $this->storeManager->getStore()->getCurrentCurrencyCode(),
+                ];
+                $offers[] = $aggregateOffer;
             }
 
             /** @var string[] $final */
@@ -182,9 +203,7 @@ class Product extends Template
                 'sku' => $product->getSku(),
                 'gtin' => $product->getGtin(),
                 'mpn' => $product->getMpn(),
-                'offers' => [
-                    $offer
-                ]
+                'offers' => $offers
             ];
 
             $manufacturerAttribute = $product->getResource()->getAttribute('manufacturer');
@@ -240,41 +259,39 @@ class Product extends Template
                 ->addStatusFilter(\Magento\Review\Model\Review::STATUS_APPROVED)
                 ->setDateOrder();
 
-                foreach ($reviewCollection as $review) {
-                    $reviews[] = [
-                        '@type' => 'Review',
-                        'reviewRating' => [
-                            '@type' => 'Rating',
-                            'bestRating' => '5',
-                            'worstRating' => '1',
-                        ],
-                        'author' => [
-                            '@type' => 'Person',
-                            'name' => $review->getNickname()
-                        ]
-                    ];
+            $parentProductId = $this->reviewsHelper->getParentProductId($product->getId());
+            $configurableAttributes = [];
+
+            if ($parentProductId) {
+                $configurableAttributes = $this->reviewsHelper->getConfigurableAttributes($parentProductId);
+            }
+
+            foreach ($reviewCollection as $review) {
+                $authorData = [
+                    '@type' => 'Person',
+                    'name' => $review->getNickname(),
+                ];
+
+                $reviewRatingData = [
+                    '@type' => 'Rating',
+                    'bestRating' => '5',
+                    'worstRating' => '1',
+                ];
+
+                foreach ($configurableAttributes as $attribute) {
+                    $reviewRatingData[$attribute['label']] = $this->reviewsHelper->getProductAttributeValue($review->getEntityPkValue(), $attribute['code']) ?? 'N/A';
                 }
 
-                if (!empty($reviews)) {
-                    $final['review'] = $reviews;
-                }
+                $reviews[] = [
+                    '@type' => 'Review',
+                    'reviewRating' => $reviewRatingData,
+                    'author' => $authorData,
+                ];
+            }
 
-                // Check if the product is configurable
-                if ($product->getTypeId() === 'configurable') {
-                    $childProducts = $product->getTypeInstance()->getUsedProducts($product);
-                    $prices = [];
-                    foreach ($childProducts as $childProduct) {
-                        $prices[] = $childProduct->getFinalPrice();
-                    }
-                    $final['offersss'] = [
-                        '@type' => 'AggregateOffer',
-                        'offerCount' => count($childProducts),
-                        'lowPrice' => min($prices),
-                        'highPrice' => max($prices),
-                        'priceCurrency' => $this->storeManager->getStore()->getCurrentCurrencyCode() // Dynamically set the currency
-                    ];
-                }
-
+            if (!empty($reviews)) {
+                $final['review'] = $reviews;
+            }
 
             return $this->serialize->serialize($final);
         }

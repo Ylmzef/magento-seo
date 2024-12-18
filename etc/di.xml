@@ -30,4 +30,16 @@
             </argument>
         </arguments>
     </type>
+
+    <type name="Efex\Reviews\Helper\Data">
+        <arguments>
+            <argument name="context" xsi:type="object">Magento\Framework\App\Helper\Context</argument>
+        </arguments>
+    </type>
+
+    <type name="Web200\Seo\Block\MicroData\Product">
+        <arguments>
+            <argument name="context" xsi:type="object">Magento\Framework\View\Element\Template\Context</argument>
+        </arguments>
+    </type>
 </config>
