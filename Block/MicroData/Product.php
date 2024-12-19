@@ -22,6 +22,8 @@ use Magento\Store\Model\StoreManagerInterface;
 use Web200\Seo\Provider\MicrodataConfig;
 use Magento\Review\Model\ResourceModel\Review\CollectionFactory as ReviewCollectionFactory;
 use Efex\Reviews\Helper\Data as ReviewsHelper;
+use Magento\Review\Block\Product\View as ProductReview;
+
 
 
 
@@ -84,6 +86,11 @@ class Product extends Template
      */
     protected $reviewCollectionFactory;
 
+    /**
+     * productReview
+     */
+    protected $productReview;
+
 
     /**
      * Product constructor.
@@ -98,6 +105,7 @@ class Product extends Template
      * @param ReviewCollectionFactory $reviewCollectionFactory
      * @param Context                 $context
      * @param ReviewsHelper           $reviewsHelper
+     * @param ProductReview           $productReview
      * @param mixed[]                 $data
      */
     public function __construct(
@@ -110,6 +118,7 @@ class Product extends Template
         SummaryFactory $reviewSummaryFactory,
         ReviewCollectionFactory $reviewCollectionFactory,
         ReviewsHelper $reviewsHelper, // Inject ReviewsHelper here
+        ProductReview $productReview, // Inject ProductReview here
         Context $context,
         array $data = []
     ) {
@@ -124,6 +133,7 @@ class Product extends Template
         $this->config = $config;
         $this->reviewCollectionFactory = $reviewCollectionFactory;
         $this->reviewsHelper = $reviewsHelper; // Assign to a class property
+        $this->productReview = $productReview; // Assign to a class property
 
 
     }
@@ -174,7 +184,6 @@ class Product extends Template
                 'availability' => $product->isAvailable() ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
             ];
 
-            $offers = [$offer];
 
             // Check if the product is configurable
             if ($product->getTypeId() === 'configurable') {
@@ -191,6 +200,8 @@ class Product extends Template
                     'priceCurrency' => $this->storeManager->getStore()->getCurrentCurrencyCode(),
                 ];
                 $offers[] = $aggregateOffer;
+            } else {
+                $offers = [$offer];
             }
 
             /** @var string[] $final */
@@ -237,6 +248,7 @@ class Product extends Template
             $summaryModel = $reviewSummary->load($product->getId());
             /** @var int $reviewCount */
             $reviewCount = (int)$summaryModel->getReviewsCount();
+            dd($reviewCount);
             if (!$reviewCount) {
                 $reviewCount = 0;
             }
@@ -253,40 +265,38 @@ class Product extends Template
             }
 
             $reviews = [];
-            $reviewCollection = $this->reviewCollectionFactory->create()
-                ->addEntityFilter('product', $product->getId())
-                ->addStoreFilter($this->storeManager->getStore()->getId())
-                ->addStatusFilter(\Magento\Review\Model\Review::STATUS_APPROVED)
-                ->setDateOrder();
+            $reviewCollection = $this->productReview->getReviewsCollection();
+            $reviewCollection->load()->addRateVotes();
+            $items = $reviewCollection->getItems();
 
-            $parentProductId = $this->reviewsHelper->getParentProductId($product->getId());
-            $configurableAttributes = [];
+            if(count($items)) {
+                foreach ($items as $review) {
+                    if(count($review->getRatingVotes())) {
+                        foreach ($review->getRatingVotes() as $vote) {
+                            $rating = $vote->getPercent();
+                            $ratingSteps = 5;
+                            $starsFilled = is_numeric($rating) ? floor($rating / 100 * $ratingSteps) : 0;
 
-            if ($parentProductId) {
-                $configurableAttributes = $this->reviewsHelper->getConfigurableAttributes($parentProductId);
-            }
+                            $reviewRatingData = [
+                                '@type' => 'Rating',
+                                'bestRating' => '5',
+                                'worstRating' => '1',
+                                'ratingValue' => $starsFilled
+                            ];
+                        }
 
-            foreach ($reviewCollection as $review) {
-                $authorData = [
-                    '@type' => 'Person',
-                    'name' => $review->getNickname(),
-                ];
+                    }
+                    $authorData = [
+                        '@type' => 'Person',
+                        'name' => $review->getNickname(),
+                    ];
 
-                $reviewRatingData = [
-                    '@type' => 'Rating',
-                    'bestRating' => '5',
-                    'worstRating' => '1',
-                ];
-
-                foreach ($configurableAttributes as $attribute) {
-                    $reviewRatingData[$attribute['label']] = $this->reviewsHelper->getProductAttributeValue($review->getEntityPkValue(), $attribute['code']) ?? 'N/A';
+                    $reviews[] = [
+                        '@type' => 'Review',
+                        'reviewRating' => $reviewRatingData,
+                        'author' => $authorData,
+                    ];
                 }
-
-                $reviews[] = [
-                    '@type' => 'Review',
-                    'reviewRating' => $reviewRatingData,
-                    'author' => $authorData,
-                ];
             }
 
             if (!empty($reviews)) {
