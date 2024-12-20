@@ -109,22 +109,31 @@ class Breadcrumbs extends Template
             'itemListElement' => []
         ];
 
+        $crumbs = $this->getItems();
         $position = 1;
-        $crumbs   = $this->getItems();
-        foreach ($crumbs as $crumb) {
+
+        foreach ($crumbs as $index => $crumb) {
             if (!isset($crumb['link'])) {
                 continue;
             }
-            $final['itemListElement'][] = [
+
+            $isLastBreadcrumb = ($index === count($crumbs) - 1);
+
+            $itemData = [
                 '@type' => 'ListItem',
                 'position' => $position,
-                'item' => [
-                    '@id' => $crumb['link'],
-                    'name' => $crumb['label']
-                ]
+                'name' => $crumb['label'],
             ];
+
+            if (!$isLastBreadcrumb) {
+                $itemData['item'] = $crumb['link'];
+            }
+
+            $final['itemListElement'][] = $itemData;
+            $position++;
         }
 
         return $this->json->serialize($final);
     }
+
 }
