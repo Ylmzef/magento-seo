@@ -207,18 +207,18 @@ class Organization extends Template
             $websiteUrl = $this->storeManager->getStore()->getBaseUrl();
             /** @var string $storeName */
             $storeName = $this->getConfigValue('general/store_information/name');
-            $alternateName = $this->getCustomVariableValue('alternateName');
-            $legalName = $this->getCustomVariableValue('legalName');
-            $description = $this->getCustomVariableValue('description');
-            $image = $this->getCustomVariableValue('image');
+            $alternateName = $this->getCustomVariableValue('structured-data-alternateName');
+            $legalName = $this->getCustomVariableValue('structured-data-legalName');
+            $description = $this->getCustomVariableValue('structured-data-description');
+            $image = $this->getCustomVariableValue('structured-data-image');
             $senderEmail = $this->getConfigValue('trans_email/ident_general/email');
             $storeTelephone = $this->getConfigValue('general/store_information/phone');
             $vatId = $this->getConfigValue('general/store_information/merchant_vat_number');
             $taxId = $this->getConfigValue('general/store_information/merchant_vat_number');
-            $iso6523Code = $this->getCustomVariableValue('iso6523Code');
-            $duns = $this->getCustomVariableValue('duns');
-            $globalLocationNumber = $this->getCustomVariableValue('globalLocationNumber');
-            $foundingDate = $this->getCustomVariableValue('foundingDate');
+            $iso6523Code = $this->getCustomVariableValue('structured-data-iso6523Code');
+            $duns = $this->getCustomVariableValue('structured-data-duns');
+            $globalLocationNumber = $this->getCustomVariableValue('structured-data-globalLocationNumber');
+            $foundingDate = $this->getCustomVariableValue('structured-data-foundingDate');
             $allowCountries = $this->getConfigValue('general/country/allow');
             $allowedCountryNames = [];
             if (!empty($allowCountries)) {
@@ -242,10 +242,10 @@ class Organization extends Template
             $addressRegion = $this->getRegionName($regionId);
             $addressCountry = $this->getCountryName($countryId);
 
-            $employeesMinValue = $this->getCustomVariableValue('fnumberOfEmployeesMinValue');
-            $employeesMaxValue = $this->getCustomVariableValue('fnumberOfEmployeesMaxValue');
-            $sameAs = $this->getCustomVariableValue('sameas');
-            $aggregateRatingUrl = $this->getCustomVariableValue('aggregateRatingUrl');
+            $employeesMinValue = $this->getCustomVariableValue('structured-data-fnumberOfEmployees-minValue');
+            $employeesMaxValue = $this->getCustomVariableValue('structured-data-fnumberOfEmployees-maxValue');
+            $sameAs = $this->getCustomVariableValue('structured-data-sameAs');
+            $aggregateRatingUrl = $this->getCustomVariableValue('structured-data-aggregateRating-url');
 
 
             /** @var string[] $final */
