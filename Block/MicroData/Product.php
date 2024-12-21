@@ -241,64 +241,44 @@ class Product extends Template
                 }
             }
 
-            /** @var Summary $reviewSummary */
-            $reviewSummary = $this->reviewSummaryFactory->create();
-            $reviewSummary->setData('store_id', $this->storeManager->getStore()->getId());
-            /** @var Summary $summaryModel */
-            $summaryModel = $reviewSummary->load($product->getId());
-            /** @var int $reviewCount */
-            $reviewCount = (int)$summaryModel->getReviewsCount();
-            if (!$reviewCount) {
-                $reviewCount = 0;
+            /** Add reviews and aggregateRating */
+            $reviews = [];
+            $totalRatingValue = 0;
+            $reviewCount = 0;
+            $reviewCollection = $this->productReview->getReviewsCollection();
+            $reviewCollection->load()->addRateVotes();
+            foreach ($reviewCollection as $review) {
+                $ratingValue = 0;
+                $ratingSteps = 5;
+                foreach ($review->getRatingVotes() as $vote) {
+                    $rating = $vote->getPercent();
+                    $ratingValue += is_numeric($rating) ? floor($rating / 100 * $ratingSteps) : 0;
+                }
+                $reviews[] = [
+                    '@type' => 'Review',
+                    'reviewRating' => [
+                        '@type' => 'Rating',
+                        'bestRating' => '5',
+                        'worstRating' => '1',
+                        'ratingValue' => $ratingValue,
+                    ],
+                    'author' => [
+                        '@type' => 'Person',
+                        'name' => $review->getNickname(),
+                    ],
+                ];
+                $totalRatingValue += $ratingValue;
+                $reviewCount++;
             }
-            /** @var int $ratingSummary */
-            $ratingSummary = ($summaryModel->getRatingSummary()) ? (int)$summaryModel->getRatingSummary() : 20;
-            if ($reviewCount) {
+
+            if ($reviewCount > 0) {
                 $final['aggregateRating'] = [
                     '@type' => 'AggregateRating',
                     'bestRating' => '5',
                     'worstRating' => '1',
-                    'ratingValue' => $ratingSummary / 20,
+                    'ratingValue' => round($totalRatingValue / $reviewCount, 1),
                     'reviewCount' => $reviewCount,
                 ];
-            }
-
-            $reviews = [];
-            $reviewCollection = $this->productReview->getReviewsCollection();
-            $reviewCollection->load()->addRateVotes();
-            $items = $reviewCollection->getItems();
-
-            if(count($items)) {
-                foreach ($items as $review) {
-                    if(count($review->getRatingVotes())) {
-                        foreach ($review->getRatingVotes() as $vote) {
-                            $rating = $vote->getPercent();
-                            $ratingSteps = 5;
-                            $starsFilled = is_numeric($rating) ? floor($rating / 100 * $ratingSteps) : 0;
-
-                            $reviewRatingData = [
-                                '@type' => 'Rating',
-                                'bestRating' => '5',
-                                'worstRating' => '1',
-                                'ratingValue' => $starsFilled
-                            ];
-                        }
-
-                    }
-                    $authorData = [
-                        '@type' => 'Person',
-                        'name' => $review->getNickname(),
-                    ];
-
-                    $reviews[] = [
-                        '@type' => 'Review',
-                        'reviewRating' => $reviewRatingData,
-                        'author' => $authorData,
-                    ];
-                }
-            }
-
-            if (!empty($reviews)) {
                 $final['review'] = $reviews;
             }
 
