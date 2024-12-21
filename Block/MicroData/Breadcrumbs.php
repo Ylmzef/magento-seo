@@ -113,10 +113,6 @@ class Breadcrumbs extends Template
         $position = 1;
 
         foreach ($crumbs as $index => $crumb) {
-            if (!isset($crumb['link'])) {
-                continue;
-            }
-
             $isLastBreadcrumb = ($index === count($crumbs) - 1);
 
             $itemData = [
