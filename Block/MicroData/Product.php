@@ -248,7 +248,6 @@ class Product extends Template
             $summaryModel = $reviewSummary->load($product->getId());
             /** @var int $reviewCount */
             $reviewCount = (int)$summaryModel->getReviewsCount();
-            dd($reviewCount);
             if (!$reviewCount) {
                 $reviewCount = 0;
             }
