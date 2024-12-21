@@ -20,6 +20,12 @@ use Magento\Review\Model\Review\Summary;
 use Magento\Review\Model\Review\SummaryFactory;
 use Magento\Store\Model\StoreManagerInterface;
 use Web200\Seo\Provider\MicrodataConfig;
+use Magento\Review\Model\ResourceModel\Review\CollectionFactory as ReviewCollectionFactory;
+use Efex\Reviews\Helper\Data as ReviewsHelper;
+use Magento\Review\Block\Product\View as ProductReview;
+
+
+
 
 /**
  * Class Product
@@ -76,6 +82,17 @@ class Product extends Template
     protected $config;
 
     /**
+     * reviewCollectionFactory
+     */
+    protected $reviewCollectionFactory;
+
+    /**
+     * productReview
+     */
+    protected $productReview;
+
+
+    /**
      * Product constructor.
      *
      * @param MicrodataConfig         $config
@@ -85,7 +102,10 @@ class Product extends Template
      * @param Image                   $image
      * @param ReviewRendererInterface $reviewRenderer
      * @param SummaryFactory          $reviewSummaryFactory
+     * @param ReviewCollectionFactory $reviewCollectionFactory
      * @param Context                 $context
+     * @param ReviewsHelper           $reviewsHelper
+     * @param ProductReview           $productReview
      * @param mixed[]                 $data
      */
     public function __construct(
@@ -96,6 +116,9 @@ class Product extends Template
         Image $image,
         ReviewRendererInterface $reviewRenderer,
         SummaryFactory $reviewSummaryFactory,
+        ReviewCollectionFactory $reviewCollectionFactory,
+        ReviewsHelper $reviewsHelper, // Inject ReviewsHelper here
+        ProductReview $productReview, // Inject ProductReview here
         Context $context,
         array $data = []
     ) {
@@ -108,6 +131,11 @@ class Product extends Template
         $this->reviewRenderer       = $reviewRenderer;
         $this->reviewSummaryFactory = $reviewSummaryFactory;
         $this->config = $config;
+        $this->reviewCollectionFactory = $reviewCollectionFactory;
+        $this->reviewsHelper = $reviewsHelper; // Assign to a class property
+        $this->productReview = $productReview; // Assign to a class property
+
+
     }
 
     /**
@@ -134,9 +162,14 @@ class Product extends Template
         if ($product) {
             /** @var string $websiteUrl */
             $websiteUrl = $this->storeManager->getStore()->getBaseUrl();
-            /** @var string $imageUrl */
-            $imageUrl = $this->image->init($product, 'product_base_image')
-                ->setImageFile($product->getFile())->getUrl();
+            /** @var string[] $imageUrls */
+            $imageUrls = [];
+            $galleryImages = $product->getMediaGalleryImages();
+            if ($galleryImages) {
+                foreach ($galleryImages as $image) {
+                    $imageUrls[] = $image->getUrl();
+                }
+            }
 
             /** @var Datetime $available */
             $available = new Datetime();
@@ -144,15 +177,31 @@ class Product extends Template
             /** @var string[] $offer */
             $offer = [
                 '@type' => 'Offer',
-                'priceCurrency' => 'EUR',
+                'priceCurrency' => $this->storeManager->getStore()->getCurrentCurrencyCode(),
                 'url' => $product->getProductUrl(),
                 'price' => round($product->getFinalPrice(), 2),
-                'priceValidUntil' => $available->format('Y-m-d')
+                'priceValidUntil' => $available->format('Y-m-d'),
+                'availability' => $product->isAvailable() ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
             ];
-            if ($product->isAvailable()) {
-                $offer['availability'] = 'https://schema.org/InStock';
+
+
+            // Check if the product is configurable
+            if ($product->getTypeId() === 'configurable') {
+                $childProducts = $product->getTypeInstance()->getUsedProducts($product);
+                $prices = [];
+                foreach ($childProducts as $childProduct) {
+                    $prices[] = $childProduct->getFinalPrice();
+                }
+                $aggregateOffer = [
+                    '@type' => 'AggregateOffer',
+                    'offerCount' => count($childProducts),
+                    'lowPrice' => min($prices),
+                    'highPrice' => max($prices),
+                    'priceCurrency' => $this->storeManager->getStore()->getCurrentCurrencyCode(),
+                ];
+                $offers[] = $aggregateOffer;
             } else {
-                $offer['availability'] = 'https://schema.org/OutOfStock';
+                $offers = [$offer];
             }
 
             /** @var string[] $final */
@@ -160,13 +209,24 @@ class Product extends Template
                 '@context' => 'https://schema.org',
                 '@type' => 'Product',
                 'name' => $product->getName(),
-                'image' => $imageUrl,
+                'image' => $imageUrls,
                 'description' => $product->getShortDescription(),
                 'sku' => $product->getSku(),
-                'offers' => [
-                    $offer
-                ]
+                'gtin' => $product->getGtin(),
+                'mpn' => $product->getMpn(),
+                'offers' => $offers
             ];
+
+            $manufacturerAttribute = $product->getResource()->getAttribute('manufacturer');
+            if ($manufacturerAttribute) {
+                $manufacturerValue = $manufacturerAttribute->getFrontend()->getValue($product);
+                if (!empty($manufacturerValue) && $manufacturerValue !== 'No') {
+                    $final['Brand'] = [
+                        '@type' => 'Brand',
+                        'name' => $manufacturerValue
+                    ];
+                }
+            }
 
             /** @var string $brand */
             $brand = $this->config->getBrand();
@@ -181,26 +241,45 @@ class Product extends Template
                 }
             }
 
-            /** @var Summary $reviewSummary */
-            $reviewSummary = $this->reviewSummaryFactory->create();
-            $reviewSummary->setData('store_id', $this->storeManager->getStore()->getId());
-            /** @var Summary $summaryModel */
-            $summaryModel = $reviewSummary->load($product->getId());
-            /** @var int $reviewCount */
-            $reviewCount = (int)$summaryModel->getReviewsCount();
-            if (!$reviewCount) {
-                $reviewCount = 0;
+            /** Add reviews and aggregateRating */
+            $reviews = [];
+            $totalRatingValue = 0;
+            $reviewCount = 0;
+            $reviewCollection = $this->productReview->getReviewsCollection();
+            $reviewCollection->load()->addRateVotes();
+            foreach ($reviewCollection as $review) {
+                $ratingValue = 0;
+                $ratingSteps = 5;
+                foreach ($review->getRatingVotes() as $vote) {
+                    $rating = $vote->getPercent();
+                    $ratingValue += is_numeric($rating) ? floor($rating / 100 * $ratingSteps) : 0;
+                }
+                $reviews[] = [
+                    '@type' => 'Review',
+                    'reviewRating' => [
+                        '@type' => 'Rating',
+                        'bestRating' => '5',
+                        'worstRating' => '1',
+                        'ratingValue' => $ratingValue,
+                    ],
+                    'author' => [
+                        '@type' => 'Person',
+                        'name' => $review->getNickname(),
+                    ],
+                ];
+                $totalRatingValue += $ratingValue;
+                $reviewCount++;
             }
-            /** @var int $ratingSummary */
-            $ratingSummary = ($summaryModel->getRatingSummary()) ? (int)$summaryModel->getRatingSummary() : 20;
-            if ($reviewCount) {
+
+            if ($reviewCount > 0) {
                 $final['aggregateRating'] = [
                     '@type' => 'AggregateRating',
                     'bestRating' => '5',
                     'worstRating' => '1',
-                    'ratingValue' => $ratingSummary / 20,
+                    'ratingValue' => round($totalRatingValue / $reviewCount, 1),
                     'reviewCount' => $reviewCount,
                 ];
+                $final['review'] = $reviews;
             }
 
             return $this->serialize->serialize($final);
