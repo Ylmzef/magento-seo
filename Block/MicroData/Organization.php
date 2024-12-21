@@ -149,7 +149,13 @@ class Organization extends Template
     {
         try {
             $variable = $this->variable->loadByCode($code);
-            return $variable->getPlainValue() ?: null;
+            $plainValue = $variable->getPlainValue();
+            $htmlValue = $variable->getHtmlValue();
+            if (empty($plainValue) && empty($htmlValue)) {
+                return null;
+            }
+            return $plainValue ?: $htmlValue;
+
         } catch (\Exception $e) {
             return null;
         }
@@ -236,8 +242,10 @@ class Organization extends Template
             $addressRegion = $this->getRegionName($regionId);
             $addressCountry = $this->getCountryName($countryId);
 
-            $employeesMinValue = $this->getCustomVariableValue('fnumberOfEmployees.minValue');
-            $employeesMaxValue = $this->getCustomVariableValue('fnumberOfEmployees.maxValue');
+            $employeesMinValue = $this->getCustomVariableValue('fnumberOfEmployeesMinValue');
+            $employeesMaxValue = $this->getCustomVariableValue('fnumberOfEmployeesMaxValue');
+            $sameAs = $this->getCustomVariableValue('sameas');
+            $aggregateRatingUrl = $this->getCustomVariableValue('aggregateRatingUrl');
 
 
             /** @var string[] $final */
@@ -335,6 +343,23 @@ class Organization extends Template
             }
             if (!empty($employeesMaxValue)) {
                 $final['numberOfEmployees']['maxValue'] = $employeesMaxValue;
+            }
+
+            if (!empty($sameAs)) {
+                $sameAsArray = array_filter(array_map('trim', explode(',', $sameAs)));
+                $final["sameAs"] = $sameAsArray;
+            }
+
+            $final["aggregateRating"] = [
+                "@type" => "AggregateRating",
+                "bestRating" => "5",
+                "worstRating" => "1",
+                "ratingValue" => "4.5",
+                "reviewCount" => "4010",
+            ];
+
+            if (!empty($aggregateRatingUrl)) {
+                $final['aggregateRating']['url'] = $aggregateRatingUrl;
             }
 
 
