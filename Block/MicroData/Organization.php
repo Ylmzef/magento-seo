@@ -148,9 +148,21 @@ class Organization extends Template
     public function getCustomVariableValue(string $code, string $scopeType = \Magento\Store\Model\ScopeInterface::SCOPE_STORE, ?int $storeId = null): ?string
     {
         try {
-            $variable = $this->variable->loadByCode($code);
-            $plainValue = $variable->getPlainValue();
-            $htmlValue = $variable->getHtmlValue();
+            if ($storeId === null) {
+                $storeId = $this->storeManager->getStore()->getId();
+            }
+            $connection = $this->variable->getResource()->getConnection();
+            $tableName = $this->variable->getResource()->getMainTable();
+            $varibleQuery = $connection->select()->from($tableName)->where('code =?', $code);
+            $varibleQueryresult = $connection->fetchRow($varibleQuery);
+            $varaibleValueQuery = $connection->select()->from('variable_value')->where('variable_id =?', $varibleQueryresult['variable_id'])->where('store_id =?', $storeId);
+            $varaibleValueQueryresult = $connection->fetchRow($varaibleValueQuery);
+            if(!$varaibleValueQueryresult) {
+                $varaibleValueQuery = $connection->select()->from('variable_value')->where('variable_id =?', $varibleQueryresult['variable_id'])->where('store_id =?', 0);
+                $varaibleValueQueryresult = $connection->fetchRow($varaibleValueQuery);
+            }
+            $plainValue = $varaibleValueQueryresult['plain_value'];
+            $htmlValue = $varaibleValueQueryresult['html_value'];
             if (empty($plainValue) && empty($htmlValue)) {
                 return null;
             }
