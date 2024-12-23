@@ -74,6 +74,7 @@ class CategoryProduct extends Template
                 '@type' => 'ListItem',
                 'position' => $position,
                 'item' => [
+                    "@type" => "Product",
                     'name' => $product->getName(),
                     'image' => $this->getImageUrls($product),
                 ]
@@ -84,6 +85,24 @@ class CategoryProduct extends Template
                 'price' => round($product->getFinalPrice(), 2),
                 'priceCurrency' => $this->_storeManager->getStore()->getCurrentCurrencyCode(),
             ];
+
+            // Check if the product is configurable
+            if ($product->getTypeId() === 'configurable') {
+                $childProducts = $product->getTypeInstance()->getUsedProducts($product);
+                $prices = [];
+                foreach ($childProducts as $childProduct) {
+                    $prices[] = $childProduct->getFinalPrice();
+                }
+                $aggregateOffer = [
+                    '@type' => 'AggregateOffer',
+                    'lowPrice' => min($prices),
+                    'highPrice' => max($prices),
+                    'priceCurrency' => $this->_storeManager->getStore()->getCurrentCurrencyCode(),
+                ];
+                $productData['item']['offers'] = $aggregateOffer;
+            } else {
+                $productData['item']['offers'] = [$offer];
+            }
 
             // Aggregate Rating
             $totalRatingValue = 0;
@@ -111,24 +130,6 @@ class CategoryProduct extends Template
                     'ratingValue' => round($totalRatingValue / $reviewCount, 1),
                     'reviewCount' => $reviewCount,
                 ];
-            }
-
-            // Check if the product is configurable
-            if ($product->getTypeId() === 'configurable') {
-                $childProducts = $product->getTypeInstance()->getUsedProducts($product);
-                $prices = [];
-                foreach ($childProducts as $childProduct) {
-                    $prices[] = $childProduct->getFinalPrice();
-                }
-                $aggregateOffer = [
-                    '@type' => 'AggregateOffer',
-                    'lowPrice' => min($prices),
-                    'highPrice' => max($prices),
-                    'priceCurrency' => $this->_storeManager->getStore()->getCurrentCurrencyCode(),
-                ];
-                $productData['item']['offers'] = $aggregateOffer;
-            } else {
-                $productData['item']['offers'] = [$offer];
             }
 
             $productData['item']['url'] = $product->getProductUrl();
